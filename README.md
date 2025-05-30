@@ -76,9 +76,3 @@ Datapack: автоматическая упаковка с pack.mcmeta и фун
 
 «Скачать Datapack» – ZIP с pack.mcmeta и папкой data/....
 
-Структура репозитория
-
-
-├── index.html       # Основная страница
-├── README.md        # Этот файл
-└── LICENSE          # Лицензия
