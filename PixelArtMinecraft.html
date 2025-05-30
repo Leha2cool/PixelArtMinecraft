@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Генератор .mcfunction и Datapack</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  <style>
+    body { background: #1a0026; color: #e0e0ff; font-family: sans-serif; margin: 0; padding: 0; }
+    header { background: #4b0082; padding: 1rem; text-align: center; }
+    main { display: flex; flex-wrap: wrap; gap: 1rem; padding: 1rem; }
+    .panel { background: rgba(58,0,75,0.9); border-radius: 8px; padding: 1rem; flex: 1 1 300px; }
+    label { display: block; margin: .5rem 0 .2rem; }
+    input, select, button, textarea { width: 100%; padding: .5rem; margin-bottom: .5rem;
+      background: #38004b; border: 1px solid #550074; color: #e0e0ff; border-radius: 4px; }
+    button { background: #9400d3; cursor: pointer; transition: background .2s; }
+    button:hover { background: #ab47ff; }
+    canvas { display: block; margin: .5rem auto; background: #000; image-rendering: pixelated; }
+    textarea { height: 150px; resize: vertical; }
+  </style>
+</head>
+
+<body>
+  <header><h1>Конвертер в .mcfunction и Datapack</h1></header>
+  <main>
+    <!-- Управление -->
+    <div class="panel">
+      <label>Картинка (≤512×512)</label>
+      <input type="file" id="fileInput" accept="image/*">
+
+      <label>Ширина × Высота</label>
+      <div style="display:flex; gap:.5rem">
+        <input type="number" id="widthInput" min="1" max="512" placeholder="Ш">
+        <input type="number" id="heightInput" min="1" max="512" placeholder="В">
+      </div>
+      <button id="autoSizeBtn">Авто-размер</button>
+
+      <label>Фильтры</label>
+      <label>Яркость <input type="range" id="brightRange" min="0" max="200" value="100">%</label>
+      <label>Контраст <input type="range" id="contrastRange" min="-100" max="100" value="0"></label>
+      <label>Ч/б <input type="checkbox" id="bwToggle"></label>
+
+      <label>Ориентация</label>
+      <select id="orientation">
+        <option value="horizontal">Горизонтально (XZ)</option>
+        <option value="vertical">Вертикально (XY)</option>
+        <option value="relative">Отн. игрока</option>
+      </select>
+
+      <label>Тип команд</label>
+      <select id="cmdType">
+        <option value="set">setblock</option>
+        <option value="summon">summon falling_block</option>
+      </select>
+
+      <label>Имя функции</label>
+      <input type="text" id="functionName" placeholder="place_art">
+
+      <button id="generateBtn">Генерировать команды</button>
+    </div>
+
+    <!-- Превью -->
+    <div class="panel">
+      <h2>Preview</h2>
+      <canvas id="previewCanvas"></canvas>
+    </div>
+
+    <!-- Команды и загрузка -->
+    <div class="panel">
+      <h2>Команды</h2>
+      <textarea id="commandsArea" readonly></textarea>
+      <button id="copyBtn">Копировать</button>
+      <button id="downloadMCF">Скачать .mcfunction</button>
+      <button id="downloadDP">Скачать Datapack</button>
+    </div>
+  </main>
+
+  <script>
+  (function(){
+    // Элементы UI
+    const fileInput     = document.getElementById('fileInput');
+    const widthInput    = document.getElementById('widthInput');
+    const heightInput   = document.getElementById('heightInput');
+    const autoSizeBtn   = document.getElementById('autoSizeBtn');
+    const brightRange   = document.getElementById('brightRange');
+    const contrastRange = document.getElementById('contrastRange');
+    const bwToggle      = document.getElementById('bwToggle');
+    const orientation   = document.getElementById('orientation');
+    const cmdType       = document.getElementById('cmdType');
+    const functionName  = document.getElementById('functionName');
+    const generateBtn   = document.getElementById('generateBtn');
+    const previewCanvas = document.getElementById('previewCanvas');
+    const previewCtx    = previewCanvas.getContext('2d', { willReadFrequently: true });
+    const commandsArea  = document.getElementById('commandsArea');
+    const copyBtn       = document.getElementById('copyBtn');
+    const downloadMCF   = document.getElementById('downloadMCF');
+    const downloadDP    = document.getElementById('downloadDP');
+
+    // Скрытый холст
+    const tmpCanvas = document.createElement('canvas');
+    const tmpCtx    = tmpCanvas.getContext('2d', { willReadFrequently: true });
+
+    let img = new Image();
+
+    //  PALETTE 
+    const PALETTE = [
+    // Concrete (16)
+    { n:"white_concrete",        rgb:[207,213,214] },
+    { n:"orange_concrete",       rgb:[224, 97,  1] },
+    { n:"magenta_concrete",      rgb:[169, 48,159] },
+    { n:"light_blue_concrete",   rgb:[ 36,137,199] },
+    { n:"yellow_concrete",       rgb:[241,175, 21] },
+    { n:"lime_concrete",         rgb:[ 94,169, 24] },
+    { n:"pink_concrete",         rgb:[213,101,143] },
+    { n:"gray_concrete",         rgb:[ 55, 58, 62] },
+    { n:"light_gray_concrete",   rgb:[125,125,115] },
+    { n:"cyan_concrete",         rgb:[ 21,119,136] },
+    { n:"purple_concrete",       rgb:[100, 32,156] },
+    { n:"blue_concrete",         rgb:[ 45, 47,143] },
+    { n:"brown_concrete",        rgb:[ 96, 60, 32] },
+    { n:"green_concrete",        rgb:[ 73, 91, 36] },
+    { n:"red_concrete",          rgb:[142, 33, 33] },
+    { n:"black_concrete",        rgb:[  8, 10, 15] },
+  
+    // Wool (16)
+    { n:"white_wool",            rgb:[233,236,236] },
+    { n:"orange_wool",           rgb:[240,118, 19] },
+    { n:"magenta_wool",          rgb:[194, 77,174] },
+    { n:"light_blue_wool",       rgb:[ 58,175,217] },
+    { n:"yellow_wool",           rgb:[248,198, 39] },
+    { n:"lime_wool",             rgb:[112,185, 25] },
+    { n:"pink_wool",             rgb:[237,141,172] },
+    { n:"gray_wool",             rgb:[ 62, 68, 71] },
+    { n:"light_gray_wool",       rgb:[142,142,134] },
+    { n:"cyan_wool",             rgb:[ 21,137,145] },
+    { n:"purple_wool",           rgb:[121, 42,168] },
+    { n:"blue_wool",             rgb:[ 53, 57,157] },
+    { n:"brown_wool",            rgb:[114, 71, 40] },
+    { n:"green_wool",            rgb:[ 84,109, 27] },
+    { n:"red_wool",              rgb:[160, 39, 34] },
+    { n:"black_wool",            rgb:[ 26, 22, 22] },
+  
+    // Terracotta (16)
+    { n:"white_terracotta",      rgb:[209,178,161] },
+    { n:"orange_terracotta",     rgb:[161, 83, 37] },
+    { n:"magenta_terracotta",    rgb:[149, 87,108] },
+    { n:"light_blue_terracotta", rgb:[113,108,137] },
+    { n:"yellow_terracotta",     rgb:[186,133, 35] },
+    { n:"lime_terracotta",       rgb:[103,117, 52] },
+    { n:"pink_terracotta",       rgb:[162, 77, 78] },
+    { n:"gray_terracotta",       rgb:[ 57, 41, 35] },
+    { n:"light_gray_terracotta", rgb:[135,107, 98] },
+    { n:"cyan_terracotta",       rgb:[ 87, 91, 91] },
+    { n:"purple_terracotta",     rgb:[122, 73, 88] },
+    { n:"blue_terracotta",       rgb:[ 75, 61, 91] },
+    { n:"brown_terracotta",      rgb:[ 77, 51, 35] },
+    { n:"green_terracotta",      rgb:[ 76, 82, 42] },
+    { n:"red_terracotta",        rgb:[143, 60, 46] },
+    { n:"black_terracotta",      rgb:[ 37, 22, 16] },
+  
+    // Natural blocks (24)
+    { n:"grass_block",           rgb:[ 97,161, 53] },
+    { n:"dirt",                  rgb:[134, 96, 67] },
+    { n:"stone",                 rgb:[125,125,125] },
+    { n:"red_sand",              rgb:[191,103, 33] },
+    { n:"gravel",                rgb:[127,127,127] },
+    { n:"clay",                  rgb:[161,167,179] },
+    { n:"coal_ore",              rgb:[115,115,115] },
+    { n:"iron_ore",              rgb:[136,130,127] },
+    { n:"gold_ore",              rgb:[143,140,125] },
+    { n:"diamond_ore",           rgb:[118,118,118] },
+    { n:"emerald_ore",           rgb:[110,125,115] },
+    { n:"netherrack",            rgb:[110, 54, 48] },
+    { n:"soul_sand",             rgb:[ 85, 64, 51] },
+    { n:"glowstone",             rgb:[144,118, 70] },
+    { n:"end_stone",             rgb:[221,223,165] },
+    { n:"snow_block",            rgb:[239,251,251] },
+    { n:"obsidian",              rgb:[ 20, 18, 30] },
+    { n:"crying_obsidian",       rgb:[ 29, 11, 43] },
+    { n:"nether_quartz_ore",     rgb:[121, 60, 46] },
+    { n:"ancient_debris",        rgb:[ 75, 52, 45] },
+  
+    // Wood & plants (18)
+    { n:"oak_planks",            rgb:[168,138, 87] },
+    { n:"spruce_planks",         rgb:[115, 85, 49] },
+    { n:"birch_planks",          rgb:[197,177,122] },
+    { n:"jungle_planks",         rgb:[161,115, 65] },
+    { n:"acacia_planks",         rgb:[170, 91, 51] },
+    { n:"dark_oak_planks",       rgb:[ 66, 43, 20] },
+    { n:"oak_leaves",            rgb:[ 96,161, 23] },
+    { n:"spruce_leaves",         rgb:[ 97,153, 97] },
+    { n:"birch_leaves",          rgb:[128,167, 85] },
+    { n:"jungle_leaves",         rgb:[ 91,143, 91] },
+    { n:"acacia_leaves",         rgb:[168, 92, 32] },
+    { n:"dark_oak_leaves",       rgb:[ 66, 82, 25] },
+    { n:"hay_block",             rgb:[167,137, 21] },
+    { n:"moss_block",            rgb:[ 89,105, 43] },
+    { n:"vine",                  rgb:[ 89,125, 39] },
+    { n:"lily_pad",              rgb:[103,154, 76] },
+    { n:"cactus",                rgb:[ 88,148, 26] },
+    { n:"sugar_cane",            rgb:[ 96,219, 52] },
+  
+
+    { n:"iron_block",            rgb:[224,224,224] },
+    { n:"gold_block",            rgb:[250,238, 77] },
+    { n:"diamond_block",         rgb:[ 98,237,228] },
+    { n:"emerald_block",         rgb:[ 81,217,117] },
+    { n:"lapis_block",           rgb:[ 31, 68,140] },
+    { n:"redstone_block",        rgb:[188, 26, 26] },
+    { n:"netherite_block",       rgb:[ 68, 58, 59] },
+    
+    // Decorative (26)
+    { n:"bookshelf",             rgb:[145,116, 71] },
+    { n:"bricks",                rgb:[150, 98, 83] },
+    { n:"mossy_cobblestone",     rgb:[104,121, 66] },
+    { n:"prismarine",            rgb:[ 99,163,141] },
+    { n:"prismarine_bricks",     rgb:[ 99,171,142] },
+    { n:"dark_prismarine",       rgb:[ 60, 88, 75] },
+    { n:"sea_lantern",           rgb:[172,199,199] },
+    { n:"glow_lichen",           rgb:[127,140, 41] },
+    { n:"bone_block",            rgb:[227,220,191] },
+    { n:"dried_kelp_block",      rgb:[ 50, 61, 35] },
+    { n:"honeycomb_block",       rgb:[232,144, 40] },
+    { n:"bee_nest",              rgb:[229,182, 94] },
+    { n:"shroomlight",           rgb:[244,148, 95] },
+    { n:"magma_block",           rgb:[138, 65, 47] },
+    { n:"purpur_block",          rgb:[170,126,170] },
+    { n:"purpur_pillar",         rgb:[170,126,170] },
+    { n:"quartz_block",          rgb:[234,230,223] },
+    { n:"chiseled_quartz_block", rgb:[234,230,223] },
+    { n:"quartz_pillar",         rgb:[234,230,223] },
+    { n:"terracotta",            rgb:[152, 94, 68] },
+    { n:"white_glazed_terracotta",rgb:[188,212,202] },
+    { n:"black_glazed_terracotta",rgb:[ 67, 30, 32] },
+    { n:"red_glazed_terracotta",  rgb:[182, 60, 53] },
+    { n:"blue_glazed_terracotta", rgb:[ 47, 64,124] },
+    { n:"soul_soil",             rgb:[ 77, 58, 49] },
+    { n:"crimson_nylium",        rgb:[121,  0, 25] },
+    { n:"warped_nylium",         rgb:[ 22,126,134] },
+  
+    // Камни и минералы (24)
+    { n: "andesite", rgb: [112, 112, 112] },
+    { n: "polished_andesite", rgb: [112, 112, 112] },
+    { n: "diorite", rgb: [188, 188, 188] },
+    { n: "polished_diorite", rgb: [188, 188, 188] },
+    { n: "granite", rgb: [152, 108, 92] },
+    { n: "polished_granite", rgb: [152, 108, 92] },
+    { n: "blackstone", rgb: [52, 40, 44] },
+    { n: "polished_blackstone", rgb: [60, 52, 68] },
+    { n: "polished_blackstone_bricks", rgb: [60, 52, 68] },
+    { n: "cracked_polished_blackstone_bricks", rgb: [52, 44, 52] },
+    { n: "chiseled_polished_blackstone", rgb: [52, 44, 52] },
+    { n: "gilded_blackstone", rgb: [92, 76, 60] },
+    { n: "basalt", rgb: [84, 84, 92] },
+    { n: "polished_basalt", rgb: [84, 84, 92] },
+    { n: "smooth_stone", rgb: [164, 164, 164] },
+    { n: "cobblestone", rgb: [126, 126, 126] },
+    { n: "stone_bricks", rgb: [124, 124, 124] },
+    { n: "mossy_stone_bricks", rgb: [120, 120, 120] },
+    { n: "cracked_stone_bricks", rgb: [108, 108, 108] },
+    { n: "chiseled_stone_bricks", rgb: [116, 116, 116] },
+    { n: "infested_stone", rgb: [125, 125, 125] },
+    { n: "infested_cobblestone", rgb: [126, 126, 126] },
+    { n: "infested_stone_bricks", rgb: [124, 124, 124] },
+    { n: "infested_mossy_stone_bricks", rgb: [120, 120, 120] },
+    
+    // Песчаники (12)
+    { n: "sandstone", rgb: [217, 207, 160] },
+    { n: "chiseled_sandstone", rgb: [217, 207, 160] },
+    { n: "cut_sandstone", rgb: [217, 207, 160] },
+    { n: "smooth_sandstone", rgb: [220, 212, 168] },
+    { n: "red_sandstone", rgb: [188, 104, 36] },
+    { n: "chiseled_red_sandstone", rgb: [188, 104, 36] },
+    { n: "cut_red_sandstone", rgb: [188, 104, 36] },
+    { n: "smooth_red_sandstone", rgb: [188, 104, 36] },
+    { n: "end_stone", rgb: [221, 223, 165] },
+    { n: "end_stone_bricks", rgb: [220, 222, 164] },
+    { n: "nether_bricks", rgb: [68, 28, 36] },
+    { n: "red_nether_bricks", rgb: [108, 4, 12] },
+    
+    // Дерево и производные (36)
+    { n: "oak_log", rgb: [108, 84, 44] },
+    { n: "spruce_log", rgb: [60, 44, 20] },
+    { n: "birch_log", rgb: [212, 204, 156] },
+    { n: "jungle_log", rgb: [100, 84, 52] },
+    { n: "acacia_log", rgb: [108, 100, 84] },
+    { n: "dark_oak_log", rgb: [68, 52, 28] },
+    { n: "stripped_oak_log", rgb: [186, 154, 92] },
+    { n: "stripped_spruce_log", rgb: [116, 92, 52] },
+    { n: "stripped_birch_log", rgb: [219, 208, 160] },
+    { n: "stripped_jungle_log", rgb: [172, 132, 84] },
+    { n: "stripped_acacia_log", rgb: [180, 92, 68] },
+    { n: "stripped_dark_oak_log", rgb: [100, 76, 52] },
+    { n: "oak_wood", rgb: [168, 138, 87] },
+    { n: "spruce_wood", rgb: [115, 85, 49] },
+    { n: "birch_wood", rgb: [197, 177, 122] },
+    { n: "jungle_wood", rgb: [161, 115, 65] },
+    { n: "acacia_wood", rgb: [170, 91, 51] },
+    { n: "dark_oak_wood", rgb: [66, 43, 20] },
+    { n: "stripped_oak_wood", rgb: [186, 154, 92] },
+    { n: "stripped_spruce_wood", rgb: [116, 92, 52] },
+    { n: "stripped_birch_wood", rgb: [219, 208, 160] },
+    { n: "stripped_jungle_wood", rgb: [172, 132, 84] },
+    { n: "stripped_acacia_wood", rgb: [180, 92, 68] },
+    { n: "stripped_dark_oak_wood", rgb: [100, 76, 52] },
+    { n: "crimson_planks", rgb: [124, 60, 92] },
+    { n: "warped_planks", rgb: [60, 156, 156] },
+    { n: "crimson_stem", rgb: [132, 60, 84] },
+    { n: "warped_stem", rgb: [60, 156, 156] },
+    { n: "stripped_crimson_stem", rgb: [148, 64, 100] },
+    { n: "stripped_warped_stem", rgb: [60, 156, 156] },
+    { n: "crimson_hyphae", rgb: [92, 52, 76] },
+    { n: "warped_hyphae", rgb: [28, 116, 116] },
+    { n: "stripped_crimson_hyphae", rgb: [148, 64, 100] },
+    { n: "stripped_warped_hyphae", rgb: [60, 156, 156] },
+    { n: "beehive", rgb: [165, 125, 60] },
+    { n: "mushroom_stem", rgb: [212, 204, 196] },
+ 
+    // Глазурованная керамика (12)
+    { n: "orange_glazed_terracotta", rgb: [240, 144, 36] },
+    { n: "magenta_glazed_terracotta", rgb: [204, 100, 188] },
+    { n: "light_blue_glazed_terracotta", rgb: [100, 180, 220] },
+    { n: "yellow_glazed_terracotta", rgb: [244, 196, 44] },
+    { n: "lime_glazed_terracotta", rgb: [148, 212, 44] },
+    { n: "pink_glazed_terracotta", rgb: [236, 156, 180] },
+    { n: "gray_glazed_terracotta", rgb: [68, 68, 76] },
+    { n: "light_gray_glazed_terracotta", rgb: [156, 156, 156] },
+    { n: "cyan_glazed_terracotta", rgb: [52, 148, 156] },
+    { n: "purple_glazed_terracotta", rgb: [148, 84, 188] },
+    { n: "brown_glazed_terracotta", rgb: [124, 84, 52] },
+    { n: "green_glazed_terracotta", rgb: [108, 132, 44] },
+    
+    // Кораллы (10)
+    { n: "tube_coral_block", rgb: [52, 76, 212] },
+    { n: "brain_coral_block", rgb: [252, 116, 148] },
+    { n: "bubble_coral_block", rgb: [164, 100, 220] },
+    { n: "fire_coral_block", rgb: [164, 44, 44] },
+    { n: "horn_coral_block", rgb: [244, 196, 44] },
+    { n: "dead_tube_coral_block", rgb: [132, 132, 132] },
+    { n: "dead_brain_coral_block", rgb: [132, 132, 132] },
+    { n: "dead_bubble_coral_block", rgb: [132, 132, 132] },
+    { n: "dead_fire_coral_block", rgb: [132, 132, 132] },
+    { n: "dead_horn_coral_block", rgb: [132, 132, 132] },
+    
+    // Кварц (3)
+    { n: "smooth_quartz", rgb: [234, 230, 223] },
+    { n: "quartz_bricks", rgb: [234, 230, 223] },
+    { n: "quartz_pillar", rgb: [234, 230, 223] },
+    
+    // Функциональные блоки (26)
+    { n: "coal_block", rgb: [20, 20, 20] },
+    { n: "sponge", rgb: [204, 204, 92] },
+    { n: "wet_sponge", rgb: [164, 164, 76] },
+    { n: "tnt", rgb: [228, 92, 52] },
+    { n: "slime_block", rgb: [116, 196, 100] },
+    { n: "honey_block", rgb: [232, 160, 24] },
+    { n: "red_mushroom_block", rgb: [204, 52, 52] },
+    { n: "brown_mushroom_block", rgb: [156, 124, 92] },
+    { n: "jack_o_lantern", rgb: [196, 124, 28] },
+    { n: "melon", rgb: [156, 156, 44] },
+    { n: "pumpkin", rgb: [204, 124, 28] },
+    { n: "carved_pumpkin", rgb: [204, 124, 28] },
+    { n: "redstone_lamp", rgb: [100, 68, 52] },
+    { n: "beacon", rgb: [148, 220, 220] },
+    { n: "cauldron", rgb: [76, 76, 84] },
+    { n: "jukebox", rgb: [100, 76, 52] },
+    { n: "note_block", rgb: [100, 76, 52] },
+    { n: "lodestone", rgb: [140, 140, 148] },
+    
+    // Незер-специфичные (10)
+    { n: "cracked_nether_bricks", rgb: [60, 28, 36] },
+    { n: "chiseled_nether_bricks", rgb: [60, 28, 36] },
+    { n: "nether_wart_block", rgb: [148, 12, 12] },
+    { n: "warped_wart_block", rgb: [28, 148, 148] },
+    { n: "target", rgb: [252, 228, 180] },
+    { n: "shroomlight", rgb: [244, 148, 95] },
+    { n: "crying_obsidian", rgb: [29, 11, 43] },
+    { n: "gilded_blackstone", rgb: [92, 76, 60] },
+    { n: "soul_soil", rgb: [77, 58, 49] },
+    
+    // Дополнительные (30)
+    { n: "mycelium", rgb: [116, 92, 116] },
+    { n: "podzol", rgb: [124, 92, 68] },
+    { n: "dried_kelp_block", rgb: [50, 61, 35] },
+    { n: "honeycomb_block", rgb: [232, 144, 40] },
+    { n: "bone_block", rgb: [227, 220, 191] },
+    { n: "magma_block", rgb: [138, 65, 47] },
+    { n: "sea_lantern", rgb: [172, 199, 199] },
+    { n: "glowstone", rgb: [144, 118, 70] },
+    { n: "redstone_ore", rgb: [140, 116, 116] },
+    { n: "nether_gold_ore", rgb: [116, 68, 60] },
+    { n: "purpur_block", rgb: [170, 126, 170] },
+    { n: "purpur_pillar", rgb: [170, 126, 170] },
+    { n: "prismarine", rgb: [99, 163, 141] },
+    { n: "prismarine_bricks", rgb: [99, 171, 142] },
+    { n: "dark_prismarine", rgb: [60, 88, 75] },
+    { n: "lantern", rgb: [60, 52, 68] },
+    { n: "soul_lantern", rgb: [60, 52, 68] },
+    { n: "crimson_nylium", rgb: [121, 0, 25] }
+  ];
+
+    function clamp(v){ return v<0?0:v>255?255:v; }
+
+    // Загрузка изображения
+    fileInput.addEventListener('change', e => {
+      const f = e.target.files[0]; if(!f) return;
+      const url = URL.createObjectURL(f);
+      img = new Image();
+      img.onload = () => {
+        widthInput.value  = Math.min(img.width, 512);
+        heightInput.value = Math.min(img.height, 512);
+        updatePreview();
+      };
+      img.src = url;
+    });
+
+    autoSizeBtn.addEventListener('click', updatePreview);
+    [widthInput, heightInput, brightRange, contrastRange, bwToggle]
+      .forEach(el => el.addEventListener('input', updatePreview));
+
+    // Отрисовка preview
+    function updatePreview(){
+      if(!img.src) return;
+      const W = +widthInput.value, H = +heightInput.value;
+      tmpCanvas.width = W; tmpCanvas.height = H;
+      // масштабирование без сглаживания
+      tmpCtx.imageSmoothingEnabled = false;
+      tmpCtx.clearRect(0,0,W,H);
+      tmpCtx.drawImage(img, 0,0, W,H);
+      // применение фильтров
+      const imgData = tmpCtx.getImageData(0,0,W,H);
+      const d = imgData.data;
+      const br = brightRange.value/100, ct = +contrastRange.value;
+      const fac = (259*(ct+255))/(255*(259-ct));
+      for(let i=0; i<d.length; i+=4){
+        d[i]   = clamp(fac*(d[i]*br -128)+128);
+        d[i+1] = clamp(fac*(d[i+1]*br -128)+128);
+        d[i+2] = clamp(fac*(d[i+2]*br -128)+128);
+        if(bwToggle.checked){
+          const v = (d[i]+d[i+1]+d[i+2])/3 <128?0:255;
+          d[i]=d[i+1]=d[i+2]=v;
+        }
+      }
+      tmpCtx.putImageData(imgData,0,0);
+      // рисуем на preview
+      const scale = Math.min(600/W,600/H,10);
+      previewCanvas.width  = W*scale;
+      previewCanvas.height = H*scale;
+      previewCtx.imageSmoothingEnabled = false;
+      previewCtx.clearRect(0,0,previewCanvas.width, previewCanvas.height);
+      previewCtx.drawImage(tmpCanvas, 0,0, W*scale, H*scale);
+    }
+
+    // Генерация команд
+    generateBtn.addEventListener('click', ()=>{
+      if(!img.src) return alert('Загрузите изображение');
+      const W = +widthInput.value, H = +heightInput.value;
+      const data = tmpCtx.getImageData(0,0,W,H).data;
+      const cmds = [];
+      for(let y=0;y<H;y++){
+        for(let x=0;x<W;x++){
+          const i = (y*W + x)*4;
+          const r=data[i], g=data[i+1], b=data[i+2];
+          // ближайший цвет
+          let best=PALETTE[0], md=Infinity;
+          for(const blk of PALETTE){
+            const dr=blk.rgb[0]-r, dg=blk.rgb[1]-g, db=blk.rgb[2]-b;
+            const dist=dr*dr+dg*dg+db*db;
+            if(dist<md){ md=dist; best=blk; }
+          }
+          // позиция
+          let px,py,pz;
+          if(orientation.value==='vertical'){
+            px=`~${x}`; py=`~${H-1-y}`; pz='~';
+          } else {
+            px=`~${x}`; py='~1'; pz=`~${y}`;
+          }
+          const block = `minecraft:${best.n}`;
+          if(cmdType.value==='set'){
+            cmds.push(`setblock ${px} ${py} ${pz} ${block} replace`);
+          } else {
+            cmds.push(`summon falling_block ${px} ${py} ${pz} {BlockState:{Name:"${block}"},Time:1b,NoGravity:1b}`);
+          }
+        }
+      }
+      commandsArea.value = cmds.join('\n');
+    });
+
+    // Копировать
+    copyBtn.addEventListener('click', ()=>{
+      navigator.clipboard.writeText(commandsArea.value);
+    });
+
+    // Скачать .mcfunction
+    downloadMCF.addEventListener('click', ()=>{
+      const txt = commandsArea.value;
+      if(!txt) return alert('Сгенерируйте команды');
+      const fname = (functionName.value.trim() || 'function') + '.mcfunction';
+      const lines = txt.split('\n').map(l=>l.replace(/^\//,'')).join('\n');
+      const blob = new Blob([lines], { type:'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = fname;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // Скачать Datapack
+    downloadDP.addEventListener('click', async ()=>{
+      const txt = commandsArea.value;
+      if(!txt) return alert('Сгенерируйте команды');
+      const fname = functionName.value.trim() || 'datapack';
+      const zip = new JSZip();
+      // pack.mcmeta
+      zip.file('pack.mcmeta', JSON.stringify({
+        pack:{ pack_format:6, description:`${fname} datapack` }
+      },null,2));
+      // функция
+      zip.folder(`data/${fname}/functions`)
+         .file(`${functionName.value.trim()}.mcfunction`,
+               txt.split('\n').map(l=>l.replace(/^\//,'')).join('\n'));
+      const blob = await zip.generateAsync({ type:'blob' });
+      saveAs(blob, fname + '_datapack.zip');
+    });
+
+  })();
+  </script>
+</body>
+
+
+<style>
+  #pinOverlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: none; 
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+  }
+  #pinOverlay .modal {
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    max-width: 320px;
+    width: 90%;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+  #pinOverlay .modal p {
+    color: #000;
+    margin-bottom: 12px;
+  }
+  #pinOverlay .modal input {
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 12px;
+    font-size: 16px;
+    border: 2px solid #8A2BE2;
+    background: #8A2BE2;
+    color: #fff;
+    border-radius: 4px;
+    box-sizing: border-box;
+  }
+  #pinOverlay .modal button {
+    padding: 8px 16px;
+    font-size: 16px;
+    background: #8A2BE2;
+    border: 2px solid #8A2BE2;
+    color: #000;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  #pinOverlay .modal #pinError {
+    color: red;
+    display: none;
+    margin-top: 8px;
+  }
+</style>
+
+<div id="pinOverlay">
+  <div class="modal">
+    <p>Каждую неделю нужно вводить новый код, который вы сможете найти в нашем телеграм-канале <strong>@WeeklyCode</strong>.</p>
+    <input id="pinInput" type="text" placeholder="Введите PIN-код">
+    <button id="pinSubmit">OK</button>
+    <p id="pinError">Неверный код!</p>
+  </div>
+</div>
+
+<script>
+(function(){
+  const today = new Date();
+  const dow = today.getDay();         
+  const diffToMon = (dow + 6) % 7;     
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - diffToMon);
+
+  const pad = n => n < 10 ? '0'+n : n;
+  const weekKey = [
+    monday.getFullYear(),
+    pad(monday.getMonth()+1),
+    pad(monday.getDate())
+  ].join('-');
+
+  if (localStorage.getItem('pinAcceptedWeek') === weekKey) return;
+
+  const wed = new Date(monday);
+  wed.setDate(monday.getDate() + 2);
+  const thu = new Date(monday);
+  thu.setDate(monday.getDate() + 3);
+
+  const year = wed.getFullYear();
+  const wedDay = wed.getDate();
+  const thuDay = thu.getDate();
+  const pinCode = year * wedDay + Math.floor(thuDay / 7);
+
+
+  const overlay = document.getElementById('pinOverlay');
+  const inp     = document.getElementById('pinInput');
+  const btn     = document.getElementById('pinSubmit');
+  const err     = document.getElementById('pinError');
+  overlay.style.display = 'flex';
+  inp.focus();
+
+  function checkPin(){
+    if (parseInt(inp.value,10) === pinCode) {
+      localStorage.setItem('pinAcceptedWeek', weekKey);
+      overlay.style.display = 'none';
+      err.style.display = 'none';
+    } else {
+      err.style.display = 'block';
+    }
+  }
+
+  btn.addEventListener('click', checkPin);
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') checkPin();
+  });
+})();
+</script>
+
+
+</html>
