@@ -1,8 +1,8 @@
-# PixelArtMinecraft
+# PixelArtMinecraft 
 
 English
 Image → Minecraft Pixel Art Converter
-PixelArt → Minecraft Datapack
+PixelArt → Minecraft Datapack 1.16.5
 A client-side, single-page web app that lets you:
 
 Upload any image (up to 512×512px)
@@ -43,7 +43,7 @@ Use buttons to:
 
 Русский
 Конвертер изображений в Minecraft-пиксель-арт
-PixelArt → Minecraft Datapack
+PixelArt → Minecraft Datapack 1.16.5
 Клиентское одностраничное веб-приложение, которое позволяет:
 
 Загрузить любое изображение (макс. 512×512px)
