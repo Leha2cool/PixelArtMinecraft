@@ -518,116 +518,115 @@
 
 
 <style>
-  #pinOverlay {
-    position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    background: rgba(0,0,0,0.5);
-    display: none; 
-    align-items: center;
-    justify-content: center;
-    z-index: 9999;
-  }
-  #pinOverlay .modal {
-    background: #fff;
-    padding: 20px;
-    border-radius: 8px;
-    max-width: 320px;
-    width: 90%;
-    text-align: center;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-  }
-  #pinOverlay .modal p {
-    color: #000;
-    margin-bottom: 12px;
-  }
-  #pinOverlay .modal input {
-    width: 100%;
-    padding: 8px;
-    margin-bottom: 12px;
-    font-size: 16px;
-    border: 2px solid #8A2BE2;
-    background: #8A2BE2;
-    color: #fff;
-    border-radius: 4px;
-    box-sizing: border-box;
-  }
-  #pinOverlay .modal button {
-    padding: 8px 16px;
-    font-size: 16px;
-    background: #8A2BE2;
-    border: 2px solid #8A2BE2;
-    color: #000;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  #pinOverlay .modal #pinError {
-    color: red;
-    display: none;
-    margin-top: 8px;
-  }
-</style>
-
-<div id="pinOverlay">
-  <div class="modal">
-    <p>Каждую неделю нужно вводить новый код, который вы сможете найти в нашем телеграм-канале <strong>@WeeklyCode</strong>.</p>
-    <input id="pinInput" type="text" placeholder="Введите PIN-код">
-    <button id="pinSubmit">OK</button>
-    <p id="pinError">Неверный код!</p>
-  </div>
-</div>
-
-<script>
-(function(){
-  const today = new Date();
-  const dow = today.getDay();         
-  const diffToMon = (dow + 6) % 7;     
-  const monday = new Date(today);
-  monday.setDate(today.getDate() - diffToMon);
-
-  const pad = n => n < 10 ? '0'+n : n;
-  const weekKey = [
-    monday.getFullYear(),
-    pad(monday.getMonth()+1),
-    pad(monday.getDate())
-  ].join('-');
-
-  if (localStorage.getItem('pinAcceptedWeek') === weekKey) return;
-
-  const wed = new Date(monday);
-  wed.setDate(monday.getDate() + 2);
-  const thu = new Date(monday);
-  thu.setDate(monday.getDate() + 3);
-
-  const year = wed.getFullYear();
-  const wedDay = wed.getDate();
-  const thuDay = thu.getDate();
-  const pinCode = year * wedDay + Math.floor(thuDay / 7);
-
-
-  const overlay = document.getElementById('pinOverlay');
-  const inp     = document.getElementById('pinInput');
-  const btn     = document.getElementById('pinSubmit');
-  const err     = document.getElementById('pinError');
-  overlay.style.display = 'flex';
-  inp.focus();
-
-  function checkPin(){
-    if (parseInt(inp.value,10) === pinCode) {
-      localStorage.setItem('pinAcceptedWeek', weekKey);
-      overlay.style.display = 'none';
-      err.style.display = 'none';
-    } else {
-      err.style.display = 'block';
+    #pinOverlaypin {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: none; 
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
     }
-  }
-
-  btn.addEventListener('click', checkPin);
-  inp.addEventListener('keydown', e => {
-    if (e.key === 'Enter') checkPin();
-  });
-})();
-</script>
-
+    #pinOverlaypin .modalpin {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      max-width: 320px;
+      width: 90%;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    #pinOverlaypin .modalpin p {
+      color: #000;
+      margin-bottom: 12px;
+    }
+    #pinOverlaypin .modalpin input {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 12px;
+      font-size: 16px;
+      border: 2px solid #8A2BE2;
+      background: #8A2BE2;
+      color: #fff;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    #pinOverlaypin .modalpin button {
+      padding: 8px 16px;
+      font-size: 16px;
+      background: #8A2BE2;
+      border: 2px solid #8A2BE2;
+      color: #000;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    #pinOverlaypin .modalpin #pinErrorpin {
+      color: red;
+      display: none;
+      margin-top: 8px;
+    }
+  </style>
+  
+  <div id="pinOverlaypin">
+    <div class="modalpin">
+      <p>Каждую неделю нужно вводить новый код, который вы сможете найти в нашем телеграм-канале <strong>@WeeklyCode</strong>.</p>
+      <input id="pinInputpin" type="text" placeholder="Введите PIN-код">
+      <button id="pinSubmitpin">OK</button>
+      <p id="pinErrorpin">Неверный код!</p>
+    </div>
+  </div>
+  
+  <script>
+  (function(){
+    const today = new Date();
+    const dow = today.getDay();         
+    const diffToMon = (dow + 6) % 7;     
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - diffToMon);
+  
+    const pad = n => n < 10 ? '0'+n : n;
+    const weekKey = [
+      monday.getFullYear(),
+      pad(monday.getMonth()+1),
+      pad(monday.getDate())
+    ].join('-');
+  
+    if (localStorage.getItem('pinAcceptedWeekpin') === weekKey) return;
+  
+    const wed = new Date(monday);
+    wed.setDate(monday.getDate() + 2);
+    const thu = new Date(monday);
+    thu.setDate(monday.getDate() + 3);
+  
+    const year = wed.getFullYear();
+    const wedDay = wed.getDate();
+    const thuDay = thu.getDate();
+    const pinCode = year * wedDay + Math.floor(thuDay / 7);
+  
+  
+    const overlay = document.getElementById('pinOverlaypin');
+    const inp     = document.getElementById('pinInputpin');
+    const btn     = document.getElementById('pinSubmitpin');
+    const err     = document.getElementById('pinErrorpin');
+    overlay.style.display = 'flex';
+    inp.focus();
+  
+    function checkPin(){
+      if (parseInt(inp.value,10) === pinCode) {
+        localStorage.setItem('pinAcceptedWeekpin', weekKey);
+        overlay.style.display = 'none';
+        err.style.display = 'none';
+      } else {
+        err.style.display = 'block';
+      }
+    }
+  
+    btn.addEventListener('click', checkPin);
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter') checkPin();
+    });
+  })();
+  </script>
 
 </html>
